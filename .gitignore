@@ -45,3 +45,6 @@ example
 # APIキーなどの秘密情報
 .env
 .dev.vars
+
+# Cloudflare Workers
+.wrangler/

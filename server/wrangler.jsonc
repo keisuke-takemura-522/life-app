@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "life-app-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"]
+  // 秘密情報は wrangler secret put で設定する（ここには書かない）
+  //   ANTHROPIC_API_KEY: Claude APIのキー
+  //   APP_TOKEN: アプリからのリクエストを確認するための合言葉
+}

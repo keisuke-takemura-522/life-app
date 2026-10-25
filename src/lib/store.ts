@@ -7,6 +7,11 @@ export type Goal = { id: string; text: string; horizon: GoalHorizon; createdAt: 
 export type Habit = { id: string; name: string; createdAt: string };
 export type Task = { id: string; text: string; done: boolean; createdAt: string; doneAt?: string };
 export type JournalEntry = { date: string; mood: number | null; note: string; updatedAt: string };
+export type DailySuggestion = {
+  message: string;
+  suggestions: { title: string; reason: string }[];
+  createdAt: string;
+};
 
 export type AppData = {
   goals: Goal[];
@@ -16,11 +21,20 @@ export type AppData = {
   tasks: Task[];
   /** 日付(YYYY-MM-DD) → その日の記録 */
   journal: Record<string, JournalEntry>;
+  /** 日付(YYYY-MM-DD) → その日にAIからもらった提案 */
+  suggestions: Record<string, DailySuggestion>;
 };
 
 const STORAGE_KEY = 'life-app/data/v1';
 
-const emptyData: AppData = { goals: [], habits: [], habitLog: {}, tasks: [], journal: {} };
+const emptyData: AppData = {
+  goals: [],
+  habits: [],
+  habitLog: {},
+  tasks: [],
+  journal: {},
+  suggestions: {},
+};
 
 type Snapshot = { ready: boolean; data: AppData };
 
@@ -128,5 +142,14 @@ export function saveJournal(date: string, mood: number | null, note: string) {
   update((d) => ({
     ...d,
     journal: { ...d.journal, [date]: { date, mood, note, updatedAt: now() } },
+  }));
+}
+
+// --- AIの提案 ---
+
+export function saveSuggestion(date: string, suggestion: Omit<DailySuggestion, 'createdAt'>) {
+  update((d) => ({
+    ...d,
+    suggestions: { ...d.suggestions, [date]: { ...suggestion, createdAt: now() } },
   }));
 }

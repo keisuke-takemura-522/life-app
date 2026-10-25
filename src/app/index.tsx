@@ -1,7 +1,7 @@
 import { AddRow } from '@/components/add-row';
 import { ItemRow } from '@/components/item-row';
 import { EmptyText, Screen, Section } from '@/components/screen';
-import { ThemedText } from '@/components/themed-text';
+import { SuggestionCard } from '@/components/suggestion-card';
 import { dateKey, formatJapaneseDate } from '@/lib/date';
 import { addTask, removeTask, toggleHabit, toggleTask, useAppData } from '@/lib/store';
 
@@ -19,9 +19,7 @@ export default function TodayScreen() {
   return (
     <Screen title={formatJapaneseDate(today)}>
       <Section title="AIの提案">
-        <ThemedText type="small" themeColor="textSecondary">
-          APIキーをつないだら、ここに「今日やること3つ」が出るようになる。
-        </ThemedText>
+        <SuggestionCard data={data} today={today} />
       </Section>
 
       <Section title={`習慣 ${doneHabits.length}/${data.habits.length}`}>
