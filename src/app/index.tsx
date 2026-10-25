@@ -1,98 +1,59 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
+import { AddRow } from '@/components/add-row';
+import { ItemRow } from '@/components/item-row';
+import { EmptyText, Screen, Section } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { dateKey, formatJapaneseDate } from '@/lib/date';
+import { addTask, removeTask, toggleHabit, toggleTask, useAppData } from '@/lib/store';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+export default function TodayScreen() {
+  const { ready, data } = useAppData();
+  const today = dateKey();
+
+  if (!ready) return <Screen title={formatJapaneseDate(today)}>{null}</Screen>;
+
+  const doneHabits = data.habitLog[today] ?? [];
+  const openTasks = data.tasks.filter((t) => !t.done);
+  // 完了したタスクは今日終わった分だけ表示する
+  const doneToday = data.tasks.filter((t) => t.done && t.doneAt && dateKey(new Date(t.doneAt)) === today);
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
+    <Screen title={formatJapaneseDate(today)}>
+      <Section title="AIの提案">
+        <ThemedText type="small" themeColor="textSecondary">
+          APIキーをつないだら、ここに「今日やること3つ」が出るようになる。
         </ThemedText>
+      </Section>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+      <Section title={`習慣 ${doneHabits.length}/${data.habits.length}`}>
+        {data.habits.length === 0 ? (
+          <EmptyText>「目標」タブで追いかけたい習慣を追加しよう</EmptyText>
+        ) : (
+          data.habits.map((h) => (
+            <ItemRow
+              key={h.id}
+              label={h.name}
+              checked={doneHabits.includes(h.id)}
+              onToggle={() => toggleHabit(today, h.id)}
+            />
+          ))
+        )}
+      </Section>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      <Section title="やること">
+        {openTasks.length === 0 && doneToday.length === 0 && (
+          <EmptyText>やることを追加しよう。長押しで削除できる</EmptyText>
+        )}
+        {[...openTasks, ...doneToday].map((t) => (
+          <ItemRow
+            key={t.id}
+            label={t.text}
+            checked={t.done}
+            onToggle={() => toggleTask(t.id)}
+            onDelete={() => removeTask(t.id)}
+          />
+        ))}
+        <AddRow placeholder="タスクを追加" onAdd={addTask} />
+      </Section>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});
