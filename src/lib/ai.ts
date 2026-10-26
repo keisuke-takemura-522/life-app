@@ -33,6 +33,8 @@ function buildContext(data: AppData, today: string) {
       .map((e) => ({
         date: formatJapaneseDate(e.date),
         mood: e.mood ? MOOD_LABELS[e.mood - 1] : null,
+        rating: e.rating ? `${e.rating}/5` : null,
+        done: e.done ?? '',
         note: e.note,
       })),
   };

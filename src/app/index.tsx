@@ -3,6 +3,7 @@ import { ItemRow } from '@/components/item-row';
 import { EmptyText, Screen, Section } from '@/components/screen';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { dateKey, formatJapaneseDate } from '@/lib/date';
+import { isTaskDoneOn } from '@/lib/review';
 import { addTask, removeTask, toggleHabit, toggleTask, useAppData } from '@/lib/store';
 import { habitStreak } from '@/lib/streak';
 
@@ -15,7 +16,7 @@ export default function TodayScreen() {
   const doneHabits = data.habitLog[today] ?? [];
   const openTasks = data.tasks.filter((t) => !t.done);
   // 完了したタスクは今日終わった分だけ表示する
-  const doneToday = data.tasks.filter((t) => t.done && t.doneAt && dateKey(new Date(t.doneAt)) === today);
+  const doneToday = data.tasks.filter((t) => isTaskDoneOn(t, today));
 
   return (
     <Screen title={formatJapaneseDate(today)}>

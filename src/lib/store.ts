@@ -6,7 +6,16 @@ export type GoalHorizon = 'life' | 'year' | 'month';
 export type Goal = { id: string; text: string; horizon: GoalHorizon; createdAt: string };
 export type Habit = { id: string; name: string; createdAt: string };
 export type Task = { id: string; text: string; done: boolean; createdAt: string; doneAt?: string };
-export type JournalEntry = { date: string; mood: number | null; note: string; updatedAt: string };
+export type JournalEntry = {
+  date: string;
+  mood: number | null;
+  /** 1日の総合評価（1〜5）。振り返り機能より前の記録には入っていない */
+  rating?: number | null;
+  /** 手書きのやったこと。振り返り機能より前の記録には入っていない */
+  done?: string;
+  note: string;
+  updatedAt: string;
+};
 export type DailySuggestion = {
   message: string;
   suggestions: { title: string; reason: string }[];
@@ -143,10 +152,10 @@ export function removeTask(id: string) {
 
 // --- 記録 ---
 
-export function saveJournal(date: string, mood: number | null, note: string) {
+export function saveJournal(date: string, entry: Omit<JournalEntry, 'date' | 'updatedAt'>) {
   update((d) => ({
     ...d,
-    journal: { ...d.journal, [date]: { date, mood, note, updatedAt: now() } },
+    journal: { ...d.journal, [date]: { ...entry, date, updatedAt: now() } },
   }));
 }
 
