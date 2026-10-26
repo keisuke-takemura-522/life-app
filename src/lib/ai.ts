@@ -1,4 +1,4 @@
-import { dateKey, formatJapaneseDate } from '@/lib/date';
+import { addDays, formatJapaneseDate } from '@/lib/date';
 import type { AppData, ChatMessage, DailySuggestion } from '@/lib/store';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
@@ -8,8 +8,28 @@ const MOOD_LABELS = ['とても低い', '低い', 'ふつう', 'よい', 'とて
 
 /** today から遡って days 日分の日付キー（今日を含む） */
 function recentDateKeys(today: string, days: number) {
-  const [y, m, d] = today.split('-').map(Number);
-  return Array.from({ length: days }, (_, i) => dateKey(new Date(y, m - 1, d - i)));
+  return Array.from({ length: days }, (_, i) => addDays(today, -i));
+}
+
+export type CalendarEvent = {
+  date: string;
+  title: string;
+  /** "HH:MM"。終日の予定は null */
+  start: string | null;
+  end: string | null;
+  allDay: boolean;
+};
+
+/**
+ * サーバーに「どの日の予定がほしいか」を伝える形。
+ * サーバーは UTC で動いていて日本の日付が分からないので、日付と時差はアプリ側で決めて送る
+ */
+function calendarQuery(dates: string[]) {
+  return {
+    dates,
+    // getTimezoneOffset は「UTC - ローカル」の分なので、符号を反転すると日本は +540
+    offsetMinutes: -new Date().getTimezoneOffset(),
+  };
 }
 
 /** AIに渡す記録をまとめる。直近1週間に絞って、送る量を抑える */
@@ -62,7 +82,7 @@ export async function requestSuggestion(
   data: AppData,
   today: string,
 ): Promise<Omit<DailySuggestion, 'createdAt'>> {
-  return post('/suggest', buildContext(data, today));
+  return post('/suggest', { context: buildContext(data, today), calendar: calendarQuery([today, addDays(today, 1)]) });
 }
 
 /** その日の会話を送って、AIの返事を受け取る。保存は文字だけなので、送るのも role と content だけ */
@@ -73,7 +93,14 @@ export async function requestChatReply(
 ): Promise<string> {
   const body = await post('/chat', {
     context: buildContext(data, today),
+    calendar: calendarQuery([today, addDays(today, 1)]),
     messages: messages.map(({ role, content }) => ({ role, content })),
   });
   return body.reply;
+}
+
+/** 指定した日（最大31日分）の予定。カレンダーはサーバーが読みに行く（URLは秘密なのでアプリには置かない） */
+export async function requestCalendar(dates: string[]): Promise<CalendarEvent[]> {
+  const body = await post('/calendar', calendarQuery(dates));
+  return body.events;
 }

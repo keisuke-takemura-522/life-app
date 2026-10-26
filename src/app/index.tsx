@@ -1,4 +1,5 @@
 import { AddRow } from '@/components/add-row';
+import { CalendarCard } from '@/components/calendar-card';
 import { ItemRow } from '@/components/item-row';
 import { EmptyText, Screen, Section } from '@/components/screen';
 import { SuggestionCard } from '@/components/suggestion-card';
@@ -20,6 +21,10 @@ export default function TodayScreen() {
 
   return (
     <Screen title={formatJapaneseDate(today)}>
+      <Section title="予定">
+        <CalendarCard today={today} />
+      </Section>
+
       <Section title="AIの提案">
         <SuggestionCard data={data} today={today} />
       </Section>

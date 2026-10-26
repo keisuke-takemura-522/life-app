@@ -17,6 +17,11 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf={{ default: 'sun.max', selected: 'sun.max.fill' }} md="today" />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="calendar">
+        <NativeTabs.Trigger.Label>カレンダー</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="calendar" md="calendar_month" />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="chat">
         <NativeTabs.Trigger.Label>チャット</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

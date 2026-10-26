@@ -1,20 +1,15 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
+import { DoneList, JournalEntryView, MOODS } from '@/components/journal-entry';
 import { EmptyText, Screen, Section } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { dateKey, formatJapaneseDate } from '@/lib/date';
-import { doneOn } from '@/lib/review';
 import { type AppData, type JournalEntry, saveJournal, useAppData } from '@/lib/store';
 
-const MOODS = ['😞', '😕', '😐', '🙂', '😄'];
 const RATINGS = [1, 2, 3, 4, 5];
-
-function stars(rating: number) {
-  return '★'.repeat(rating) + '☆'.repeat(5 - rating);
-}
 
 export default function JournalScreen() {
   const { ready, data } = useAppData();
@@ -35,7 +30,7 @@ export default function JournalScreen() {
       <Section title="これまで">
         {past.length === 0 && <EmptyText>まだ記録がない</EmptyText>}
         {past.map((e) => (
-          <PastEntry key={e.date} entry={e} data={data} />
+          <JournalEntryView key={e.date} date={e.date} entry={e} data={data} />
         ))}
       </Section>
     </Screen>
@@ -135,42 +130,6 @@ function TodayEditor({ date, entry, data }: { date: string; entry?: JournalEntry
   );
 }
 
-function PastEntry({ entry, data }: { entry: JournalEntry; data: AppData }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.pastEntry}>
-      <ThemedText type="smallBold">
-        {formatJapaneseDate(entry.date)} {entry.mood ? MOODS[entry.mood - 1] : ''}
-      </ThemedText>
-      <ThemedText type="small" style={entry.rating ? { color: theme.accent } : undefined} themeColor="textSecondary">
-        {entry.rating ? stars(entry.rating) : '総合評価：記録なし'}
-      </ThemedText>
-      <DoneList data={data} date={entry.date} done={entry.done} />
-      {!!entry.note && <ThemedText type="small">{entry.note}</ThemedText>}
-    </View>
-  );
-}
-
-/** その日に完了したタスク・習慣（自動）と、手書きのやったことを並べる */
-function DoneList({ data, date, done }: { data: AppData; date: string; done?: string }) {
-  const { tasks, habits } = doneOn(data, date);
-  const items = [...habits.map((h) => `🔁 ${h}`), ...tasks.map((t) => `✓ ${t}`)];
-
-  if (items.length === 0 && !done) {
-    return <EmptyText>やったこと：記録なし</EmptyText>;
-  }
-  return (
-    <View style={styles.doneList}>
-      {items.map((item, i) => (
-        <ThemedText key={i} type="small">
-          {item}
-        </ThemedText>
-      ))}
-      {!!done && <ThemedText type="small">{done}</ThemedText>}
-    </View>
-  );
-}
-
 function Label({ children }: { children: string }) {
   return (
     <ThemedText type="smallBold" themeColor="textSecondary">
@@ -217,11 +176,5 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
-  },
-  pastEntry: {
-    gap: Spacing.one,
-  },
-  doneList: {
-    gap: Spacing.half,
   },
 });

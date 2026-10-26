@@ -2,9 +2,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 
+import { type CalendarQuery, CalendarQuerySchema, loadEvents } from './calendar';
+
 type Env = {
   ANTHROPIC_API_KEY: string;
   APP_TOKEN: string;
+  CALENDAR_ICS_URL: string;
 };
 
 const MODEL = 'claude-opus-5-5';
@@ -23,17 +26,25 @@ const SuggestionSchema = z.object({
 
 const SYSTEM_PROMPT = `あなたはユーザーの生活を一緒に整える相棒。友達のようなタメ口で、率直に話す。
 
-ユーザーの記録（目標、習慣と直近の達成状況、やることリスト、日記）を受け取り、今日やることを3つ提案する。
+ユーザーの記録（目標、習慣と直近の達成状況、やることリスト、日記）と、今日・明日の予定を受け取り、今日やることを3つ提案する。
 
 - 3つとも今日中に終わる、具体的な行動にする（「英語を頑張る」ではなく「単語アプリを15分」）
 - 今月・今年の目標につながるものを優先する
 - 達成率が落ちている習慣があれば、立て直す小さな一歩を入れる
 - 直近の気分が低い日が続いていたら、負荷を下げた提案にする
+- 今日の予定が多い日は提案を軽くし、予定の空いている時間にできることを選ぶ
+- 明日の予定に準備が必要そうなら（発表、面談、締め切りなど）、今日のうちにできる準備を入れる
 - 続いていること・できていることがあれば message で先に触れる
 - 記録に書かれていないことを決めつけない`;
 
+const SuggestRequestSchema = z.object({
+  context: z.unknown(),
+  calendar: CalendarQuerySchema.optional(),
+});
+
 const ChatRequestSchema = z.object({
   context: z.unknown(),
+  calendar: CalendarQuerySchema.optional(),
   messages: z
     .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().min(1) }))
     .min(1)
@@ -42,12 +53,12 @@ const ChatRequestSchema = z.object({
 
 const CHAT_SYSTEM_PROMPT = `あなたはユーザーの生活を一緒に整える相棒。友達のようなタメ口で、率直に話す。
 
-ユーザーの記録（目標、習慣と直近の達成状況、やることリスト、日記）を知った上で、チャットで話し相手になる。
+ユーザーの記録（目標、習慣と直近の達成状況、やることリスト、日記）と今日・明日の予定を知った上で、チャットで話し相手になる。
 
 - スマホで読むので、返事は短く。ふだんは2〜4文、長くても10行まで
 - 見出しや太字などのMarkdownは使わない。箇条書きが必要なときだけ「・」を使う
-- 記録に関係があるときは、具体的に触れる（「今週は筋トレ4/7日続いてるね」など）
-- 相談には、今日できる小さな一歩を一緒に考える
+- 記録や予定に関係があるときは、具体的に触れる（「今週は筋トレ4/7日続いてるね」など）
+- 相談には、今日できる小さな一歩を一緒に考える。予定の空いている時間も踏まえる
 - 記録に書かれていないことを決めつけない。分からないことは聞き返す`;
 
 function json(body: unknown, status = 200) {
@@ -57,7 +68,26 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function suggest(client: Anthropic, context: unknown) {
+/** AIに渡す予定の文章。カレンダーが読めなくても提案やチャットは止めない */
+async function scheduleText(env: Env, query: CalendarQuery | undefined) {
+  if (!query) return '';
+  try {
+    const events = await loadEvents(env.CALENDAR_ICS_URL, query);
+    return `\n\n予定（今日と明日）:\n${JSON.stringify(events)}`;
+  } catch (e) {
+    console.error('calendar error', e);
+    return '\n\n予定: カレンダーを読み込めなかったので不明';
+  }
+}
+
+async function suggest(client: Anthropic, env: Env, body: unknown) {
+  const parsed = SuggestRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return json({ error: 'リクエストの形式が正しくない' }, 400);
+  }
+  const { context, calendar } = parsed.data;
+  const schedule = await scheduleText(env, calendar);
+
   const response = await client.beta.messages.parse({
     model: MODEL,
     max_tokens: 16000,
@@ -66,7 +96,7 @@ async function suggest(client: Anthropic, context: unknown) {
     fallbacks: 'default',
     output_config: { effort: 'low', format: betaZodOutputFormat(SuggestionSchema) },
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: `ユーザーの記録:\n${JSON.stringify(context)}` }],
+    messages: [{ role: 'user', content: `ユーザーの記録:\n${JSON.stringify(context)}${schedule}` }],
   });
 
   if (response.stop_reason === 'refusal' || !response.parsed_output) {
@@ -75,15 +105,16 @@ async function suggest(client: Anthropic, context: unknown) {
   return json(response.parsed_output);
 }
 
-async function chat(client: Anthropic, body: unknown) {
+async function chat(client: Anthropic, env: Env, body: unknown) {
   const parsed = ChatRequestSchema.safeParse(body);
   if (!parsed.success) {
     return json({ error: 'リクエストの形式が正しくない' }, 400);
   }
-  const { context, messages } = parsed.data;
+  const { context, calendar, messages } = parsed.data;
   if (messages[0].role !== 'user' || messages[messages.length - 1].role !== 'user') {
     return json({ error: '会話はユーザーの発言で始まり、ユーザーの発言で終わる必要がある' }, 400);
   }
+  const schedule = await scheduleText(env, calendar);
 
   const response = await client.beta.messages.create({
     model: MODEL,
@@ -97,7 +128,7 @@ async function chat(client: Anthropic, body: unknown) {
     // キャッシュは先頭から同じ部分にしか効かないので、変わらないもの→たまに変わるもの→毎回増えるものの順に並べる
     system: [
       { type: 'text', text: CHAT_SYSTEM_PROMPT },
-      { type: 'text', text: `ユーザーの記録:\n${JSON.stringify(context)}` },
+      { type: 'text', text: `ユーザーの記録:\n${JSON.stringify(context)}${schedule}` },
     ],
     messages,
   });
@@ -113,10 +144,23 @@ async function chat(client: Anthropic, body: unknown) {
   return json({ reply });
 }
 
+async function calendar(env: Env, body: unknown) {
+  const parsed = CalendarQuerySchema.safeParse(body);
+  if (!parsed.success) {
+    return json({ error: 'リクエストの形式が正しくない' }, 400);
+  }
+  try {
+    return json({ events: await loadEvents(env.CALENDAR_ICS_URL, parsed.data) });
+  } catch (e) {
+    console.error('calendar error', e);
+    return json({ error: 'カレンダーを読み込めなかった' }, 502);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method !== 'POST' || !['/suggest', '/chat'].includes(url.pathname)) {
+    if (request.method !== 'POST' || !['/suggest', '/chat', '/calendar'].includes(url.pathname)) {
       return json({ error: 'not found' }, 404);
     }
     // URLを知っている他人にAPI代を使われないよう、合言葉を確認する
@@ -131,10 +175,13 @@ export default {
       return json({ error: 'リクエストの形式が正しくない' }, 400);
     }
 
+    // 予定を返すだけならClaudeは使わない
+    if (url.pathname === '/calendar') return calendar(env, body);
+
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
     try {
-      return url.pathname === '/chat' ? await chat(client, body) : await suggest(client, body);
+      return url.pathname === '/chat' ? await chat(client, env, body) : await suggest(client, env, body);
     } catch (e) {
       if (e instanceof Anthropic.AuthenticationError) {
         return json({ error: 'APIキーが正しくない' }, 500);

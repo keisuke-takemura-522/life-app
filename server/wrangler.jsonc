@@ -7,4 +7,5 @@
   // 秘密情報は wrangler secret put で設定する（ここには書かない）
   //   ANTHROPIC_API_KEY: Claude APIのキー
   //   APP_TOKEN: アプリからのリクエストを確認するための合言葉
+  //   CALENDAR_ICS_URL: GoogleカレンダーのiCal形式の非公開URL（知っている人は予定を全部見られる）
 }
