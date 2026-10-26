@@ -17,6 +17,14 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf={{ default: 'sun.max', selected: 'sun.max.fill' }} md="today" />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="chat">
+        <NativeTabs.Trigger.Label>チャット</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }}
+          md="chat"
+        />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="goals">
         <NativeTabs.Trigger.Label>目標</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'flag', selected: 'flag.fill' }} md="flag" />

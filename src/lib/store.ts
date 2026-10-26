@@ -13,6 +13,8 @@ export type DailySuggestion = {
   createdAt: string;
 };
 
+export type ChatMessage = { role: 'user' | 'assistant'; content: string; createdAt: string };
+
 export type AppData = {
   goals: Goal[];
   habits: Habit[];
@@ -23,6 +25,8 @@ export type AppData = {
   journal: Record<string, JournalEntry>;
   /** 日付(YYYY-MM-DD) → その日にAIからもらった提案 */
   suggestions: Record<string, DailySuggestion>;
+  /** 日付(YYYY-MM-DD) → その日のAIとの会話 */
+  chats: Record<string, ChatMessage[]>;
 };
 
 const STORAGE_KEY = 'life-app/data/v1';
@@ -34,6 +38,7 @@ const emptyData: AppData = {
   tasks: [],
   journal: {},
   suggestions: {},
+  chats: {},
 };
 
 type Snapshot = { ready: boolean; data: AppData };
@@ -151,5 +156,14 @@ export function saveSuggestion(date: string, suggestion: Omit<DailySuggestion, '
   update((d) => ({
     ...d,
     suggestions: { ...d.suggestions, [date]: { ...suggestion, createdAt: now() } },
+  }));
+}
+
+// --- チャット ---
+
+export function addChatMessage(date: string, message: Omit<ChatMessage, 'createdAt'>) {
+  update((d) => ({
+    ...d,
+    chats: { ...d.chats, [date]: [...(d.chats[date] ?? []), { ...message, createdAt: now() }] },
   }));
 }

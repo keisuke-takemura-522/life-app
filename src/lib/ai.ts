@@ -1,5 +1,5 @@
 import { dateKey, formatJapaneseDate } from '@/lib/date';
-import type { AppData, DailySuggestion } from '@/lib/store';
+import type { AppData, ChatMessage, DailySuggestion } from '@/lib/store';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 const APP_TOKEN = process.env.EXPO_PUBLIC_APP_TOKEN;
@@ -38,22 +38,40 @@ function buildContext(data: AppData, today: string) {
   };
 }
 
-export async function requestSuggestion(
-  data: AppData,
-  today: string,
-): Promise<Omit<DailySuggestion, 'createdAt'>> {
+/** サーバーにPOSTして、返ってきたJSONを返す。失敗したらサーバーのエラーメッセージで例外を投げる */
+async function post(path: string, payload: unknown) {
   if (!API_URL || !APP_TOKEN) {
     throw new Error('.env にサーバーのURLと合言葉が設定されていない');
   }
 
-  const res = await fetch(`${API_URL}/suggest`, {
+  const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${APP_TOKEN}` },
-    body: JSON.stringify(buildContext(data, today)),
+    body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     throw new Error(body?.error ?? `サーバーのエラー（${res.status}）`);
   }
   return body;
+}
+
+export async function requestSuggestion(
+  data: AppData,
+  today: string,
+): Promise<Omit<DailySuggestion, 'createdAt'>> {
+  return post('/suggest', buildContext(data, today));
+}
+
+/** その日の会話を送って、AIの返事を受け取る。保存は文字だけなので、送るのも role と content だけ */
+export async function requestChatReply(
+  data: AppData,
+  today: string,
+  messages: Omit<ChatMessage, 'createdAt'>[],
+): Promise<string> {
+  const body = await post('/chat', {
+    context: buildContext(data, today),
+    messages: messages.map(({ role, content }) => ({ role, content })),
+  });
+  return body.reply;
 }

@@ -7,6 +7,8 @@ type Env = {
   APP_TOKEN: string;
 };
 
+const MODEL = 'claude-opus-5-5';
+
 const SuggestionSchema = z.object({
   message: z.string().describe('今日のひとこと。1〜2文'),
   suggestions: z
@@ -30,6 +32,24 @@ const SYSTEM_PROMPT = `あなたはユーザーの生活を一緒に整える相
 - 続いていること・できていることがあれば message で先に触れる
 - 記録に書かれていないことを決めつけない`;
 
+const ChatRequestSchema = z.object({
+  context: z.unknown(),
+  messages: z
+    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().min(1) }))
+    .min(1)
+    .max(200),
+});
+
+const CHAT_SYSTEM_PROMPT = `あなたはユーザーの生活を一緒に整える相棒。友達のようなタメ口で、率直に話す。
+
+ユーザーの記録（目標、習慣と直近の達成状況、やることリスト、日記）を知った上で、チャットで話し相手になる。
+
+- スマホで読むので、返事は短く。ふだんは2〜4文、長くても10行まで
+- 見出しや太字などのMarkdownは使わない。箇条書きが必要なときだけ「・」を使う
+- 記録に関係があるときは、具体的に触れる（「今週は筋トレ4/7日続いてるね」など）
+- 相談には、今日できる小さな一歩を一緒に考える
+- 記録に書かれていないことを決めつけない。分からないことは聞き返す`;
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -37,10 +57,66 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function suggest(client: Anthropic, context: unknown) {
+  const response = await client.beta.messages.parse({
+    model: MODEL,
+    max_tokens: 16000,
+    // 安全フィルタで断られたとき、別のモデルで自動的にやり直す
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: 'low', format: betaZodOutputFormat(SuggestionSchema) },
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: `ユーザーの記録:\n${JSON.stringify(context)}` }],
+  });
+
+  if (response.stop_reason === 'refusal' || !response.parsed_output) {
+    return json({ error: 'AIが提案を作れなかった' }, 502);
+  }
+  return json(response.parsed_output);
+}
+
+async function chat(client: Anthropic, body: unknown) {
+  const parsed = ChatRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return json({ error: 'リクエストの形式が正しくない' }, 400);
+  }
+  const { context, messages } = parsed.data;
+  if (messages[0].role !== 'user' || messages[messages.length - 1].role !== 'user') {
+    return json({ error: '会話はユーザーの発言で始まり、ユーザーの発言で終わる必要がある' }, 400);
+  }
+
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: 16000,
+    // 安全フィルタで断られたとき、別のモデルで自動的にやり直す
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: 'low' },
+    // 前回と同じ先頭部分（指示・記録・それまでの会話）を安く読めるようにキャッシュする
+    cache_control: { type: 'ephemeral' },
+    // キャッシュは先頭から同じ部分にしか効かないので、変わらないもの→たまに変わるもの→毎回増えるものの順に並べる
+    system: [
+      { type: 'text', text: CHAT_SYSTEM_PROMPT },
+      { type: 'text', text: `ユーザーの記録:\n${JSON.stringify(context)}` },
+    ],
+    messages,
+  });
+
+  const reply = response.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+    .trim();
+  if (response.stop_reason === 'refusal' || !reply) {
+    return json({ error: 'AIが返事を作れなかった' }, 502);
+  }
+  return json({ reply });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method !== 'POST' || url.pathname !== '/suggest') {
+    if (request.method !== 'POST' || !['/suggest', '/chat'].includes(url.pathname)) {
       return json({ error: 'not found' }, 404);
     }
     // URLを知っている他人にAPI代を使われないよう、合言葉を確認する
@@ -48,9 +124,9 @@ export default {
       return json({ error: 'unauthorized' }, 401);
     }
 
-    let context: unknown;
+    let body: unknown;
     try {
-      context = await request.json();
+      body = await request.json();
     } catch {
       return json({ error: 'リクエストの形式が正しくない' }, 400);
     }
@@ -58,21 +134,7 @@ export default {
     const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
     try {
-      const response = await client.beta.messages.parse({
-        model: 'claude-opus-5-5',
-        max_tokens: 16000,
-        // 安全フィルタで断られたとき、別のモデルで自動的にやり直す
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: 'low', format: betaZodOutputFormat(SuggestionSchema) },
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `ユーザーの記録:\n${JSON.stringify(context)}` }],
-      });
-
-      if (response.stop_reason === 'refusal' || !response.parsed_output) {
-        return json({ error: 'AIが提案を作れなかった' }, 502);
-      }
-      return json(response.parsed_output);
+      return url.pathname === '/chat' ? await chat(client, body) : await suggest(client, body);
     } catch (e) {
       if (e instanceof Anthropic.AuthenticationError) {
         return json({ error: 'APIキーが正しくない' }, 500);
