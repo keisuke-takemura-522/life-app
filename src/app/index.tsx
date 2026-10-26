@@ -4,6 +4,7 @@ import { EmptyText, Screen, Section } from '@/components/screen';
 import { SuggestionCard } from '@/components/suggestion-card';
 import { dateKey, formatJapaneseDate } from '@/lib/date';
 import { addTask, removeTask, toggleHabit, toggleTask, useAppData } from '@/lib/store';
+import { habitStreak } from '@/lib/streak';
 
 export default function TodayScreen() {
   const { ready, data } = useAppData();
@@ -26,14 +27,17 @@ export default function TodayScreen() {
         {data.habits.length === 0 ? (
           <EmptyText>「目標」タブで追いかけたい習慣を追加しよう</EmptyText>
         ) : (
-          data.habits.map((h) => (
-            <ItemRow
-              key={h.id}
-              label={h.name}
-              checked={doneHabits.includes(h.id)}
-              onToggle={() => toggleHabit(today, h.id)}
-            />
-          ))
+          data.habits.map((h) => {
+            const streak = habitStreak(data.habitLog, h.id, today);
+            return (
+              <ItemRow
+                key={h.id}
+                label={streak > 0 ? `${h.name} 🔥${streak}日` : h.name}
+                checked={doneHabits.includes(h.id)}
+                onToggle={() => toggleHabit(today, h.id)}
+              />
+            );
+          })
         )}
       </Section>
 
